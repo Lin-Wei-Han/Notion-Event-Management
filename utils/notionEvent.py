@@ -29,7 +29,7 @@ NOTION_HEADERS = {
 known_calendars = load_json_data(CALENDARS_JSON_FILE)
 blocked_time_rules = load_json_data(TIME_JSON_FILE)
 
-def update_notion_id_property(page_id: str, value: str) -> bool:
+def update_notion_id_property(page_id: str, value: str, property_name: str) -> bool:
     """
     更新指定 Notion 頁面的特定文字屬性 (Rich Text)。
 
@@ -48,7 +48,7 @@ def update_notion_id_property(page_id: str, value: str) -> bool:
     # 為 Text (Rich Text) 屬性建構 payload
     payload = {
         "properties": {
-            "Google Event id": {
+            property_name: {
                 "rich_text": [
                     {
                         "type": "text",
@@ -111,11 +111,12 @@ def handle_insert_event(name, category, due, page_id):
             event_id = new_event_object.get('id')
             print(f"{name}: 成功建立事件，事件 ID 為: {event_id}")
 
-            update_successful = update_notion_id_property(page_id=page_id, value=event_id)
-            if update_successful:
-                print(f"{name}: 已成功將 Event ID 更新回 Notion 頁面 {page_id}")
+            update_event_successful = update_notion_id_property(page_id=page_id, value=event_id, property_name="Google Event id")
+            update_calendar_successful = update_notion_id_property(page_id=page_id, value=calendar_id, property_name="Google Calendar id")
+            if update_event_successful and update_calendar_successful:
+                print(f"{name}: Event ID 和日曆 ID 都已成功更新回 Notion 頁面 {page_id}")
             else:
-                print(f"{name}: 更新 Event ID 回 Notion 頁面 {page_id} 失敗。")
+                print(f"{name}: 更新 Event ID 或日曆 ID 回 Notion 頁面 {page_id} 失敗。")
         else:
             print(f"{name}: 建立事件失敗。")
 
@@ -167,7 +168,7 @@ def delete_google_calendar_event(service, calendar_id: str, event_id: str) -> bo
 
 def handle_page_created(page_id: str):
     logger.info(f'Page created: {page_id}')
-    name, category, due, google_event_id = fetch_and_log_page_properties(page_id)
+    name, category, due, google_event_id, google_calender_id = fetch_and_log_page_properties(page_id)
 
     handle_insert_event(name, category, due, page_id)
 
@@ -175,19 +176,15 @@ def handle_page_created(page_id: str):
 
 def handle_page_updated(page_id):
     logger.info(f'Page updated: {page_id}')
-    name, category, due, google_event_id = fetch_and_log_page_properties(page_id)
+    name, category, due, google_event_id, google_calender_id = fetch_and_log_page_properties(page_id)
 
-    if category is None:
-        category = "Personal"
-    calendar_id_for_event = known_calendars.get(category)
-
-    if google_event_id and calendar_id_for_event:
+    if google_event_id and google_calender_id:
         calendar_service = authenticate_google_calendar_service_account()
 
         if calendar_service:
             delete_successful = delete_google_calendar_event(
                 service=calendar_service,
-                calendar_id=calendar_id_for_event,
+                calendar_id=google_calender_id,
                 event_id=google_event_id
             )
 
@@ -205,19 +202,15 @@ def handle_page_updated(page_id):
 
 def handle_page_deleted(page_id):
     logger.info(f'Page deleted: {page_id}')
-    name, category, due, google_event_id = fetch_and_log_page_properties(page_id)
+    name, category, due, google_event_id, google_calender_id = fetch_and_log_page_properties(page_id)
 
-    if category is None:
-        category = "Personal"
-    calendar_id_for_event = known_calendars.get(category)
-
-    if google_event_id and calendar_id_for_event:
+    if google_event_id and google_calender_id:
         calendar_service = authenticate_google_calendar_service_account()
 
         if calendar_service:
             delete_successful = delete_google_calendar_event(
                 service=calendar_service,
-                calendar_id=calendar_id_for_event,
+                calendar_id=google_calender_id,
                 event_id=google_event_id
             )
 
@@ -247,12 +240,13 @@ def fetch_and_log_page_properties(page_id):
         category = extract_select(properties, 'Category')
         due = extract_date(properties, 'Due')
         google_event_id = extract_Google_id(properties, 'Google Event id')
+        google_calender_id = extract_Google_id(properties, 'Google Calendar id')
 
         logger.info(f"Page [{page_id}] Summary:")
         logger.info(f"  Name: {name}")
         logger.info(f"  Category: {category}")
         logger.info(f"  Due: {due}")
-        return name, category, due, google_event_id
+        return name, category, due, google_event_id, google_calender_id
     else:
         logger.error(f"Failed to fetch page properties for {page_id}. Status: {response.status_code}, Body: {response.text}")
         return None, None, None
