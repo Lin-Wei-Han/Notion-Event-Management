@@ -1,0 +1,5 @@
+venv
+app copy.py
+store
+.env
+credentials
