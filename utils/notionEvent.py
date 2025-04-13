@@ -79,10 +79,7 @@ def update_notion_id_property(page_id: str, value: str) -> bool:
         return False
 
 
-def handle_page_created(page_id: str):
-    logger.info(f'Page created: {page_id}')
-    name, category, due = fetch_and_log_page_properties(page_id)
-
+def handle_insert_event(name, category, due, page_id):
     calendar_service = authenticate_google_calendar_service_account()
 
     if name and calendar_service:
@@ -122,16 +119,116 @@ def handle_page_created(page_id: str):
         else:
             print(f"{name}: 建立事件失敗。")
 
+def delete_google_calendar_event(service, calendar_id: str, event_id: str) -> bool:
+    """
+    從指定的 Google 日曆中刪除特定事件。
+
+    Args:
+        service: 已驗證的 Google Calendar API 服務物件。
+        calendar_id (str): 事件所在的日曆 ID (例如 'primary' 或特定日曆的 ID)。
+        event_id (str): 要刪除的事件 ID。
+
+    Returns:
+        bool: 如果刪除成功則返回 True，否則返回 False。
+    """
+    if not service or not calendar_id or not event_id:
+        logger.error("delete_google_calendar_event: Missing required arguments (service, calendar_id, event_id).")
+        return False
+
+    try:
+        # 呼叫 Google Calendar API 的 delete 方法
+        service.events().delete(
+            calendarId=calendar_id,
+            eventId=event_id
+        ).execute()
+
+        logger.info(f"Successfully deleted event '{event_id}' from calendar '{calendar_id}'.")
+        print(f"成功從日曆 '{calendar_id}' 刪除事件 '{event_id}'。")
+        return True
+
+    except HttpError as error:
+        # 處理 API 錯誤
+        # 特別處理 404 Not Found 或 410 Gone，表示事件可能已被刪除
+        if error.resp.status in [404, 410]:
+             logger.warning(f"Event '{event_id}' not found in calendar '{calendar_id}'. It might have already been deleted. Status: {error.resp.status}")
+             print(f"警告：在日曆 '{calendar_id}' 中找不到事件 '{event_id}' (可能已被刪除)。狀態碼: {error.resp.status}")
+             # 根據您的需求，找不到事件可能也算是一種「成功狀態」（目標是確保它不存在）
+             # 如果希望找不到也回傳 True，可以修改這裡。目前設定為回傳 False。
+             return False # 或者 return True 如果找不到也算成功
+        else:
+             logger.error(f"Failed to delete event '{event_id}' from calendar '{calendar_id}'. An API error occurred: {error}")
+             print(f"從日曆 '{calendar_id}' 刪除事件 '{event_id}' 失敗。API 錯誤: {error}")
+             return False
+
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while deleting event '{event_id}' from calendar '{calendar_id}': {e}")
+        print(f"刪除日曆 '{calendar_id}' 的事件 '{event_id}' 時發生未預期錯誤: {e}")
+        return False
+
+def handle_page_created(page_id: str):
+    logger.info(f'Page created: {page_id}')
+    name, category, due, google_event_id = fetch_and_log_page_properties(page_id)
+
+    handle_insert_event(name, category, due, page_id)
+
 
 
 def handle_page_updated(page_id):
     logger.info(f'Page updated: {page_id}')
-    fetch_and_log_page_properties(page_id)
+    name, category, due, google_event_id = fetch_and_log_page_properties(page_id)
+
+    if category is None:
+        category = "Personal"
+    calendar_id_for_event = known_calendars.get(category)
+
+    if google_event_id and calendar_id_for_event:
+        calendar_service = authenticate_google_calendar_service_account()
+
+        if calendar_service:
+            delete_successful = delete_google_calendar_event(
+                service=calendar_service,
+                calendar_id=calendar_id_for_event,
+                event_id=google_event_id
+            )
+
+            if delete_successful:
+                logger.info(f"Successfully processed deletion for page {page_id}.")
+                handle_insert_event(name, category, due, page_id)
+            else:
+                logger.warning(f"Failed or unable to delete Google Calendar event for deleted page {page_id}.")
+        else:
+            logger.error("Could not authenticate Google Calendar service to delete event.")
+    else:
+        logger.info(f"No Google Event ID found or category missing for deleted page {page_id}. No Google Calendar event to delete.")
+
 
 
 def handle_page_deleted(page_id):
     logger.info(f'Page deleted: {page_id}')
-    fetch_and_log_page_properties(page_id)
+    name, category, due, google_event_id = fetch_and_log_page_properties(page_id)
+
+    if category is None:
+        category = "Personal"
+    calendar_id_for_event = known_calendars.get(category)
+
+    if google_event_id and calendar_id_for_event:
+        calendar_service = authenticate_google_calendar_service_account()
+
+        if calendar_service:
+            delete_successful = delete_google_calendar_event(
+                service=calendar_service,
+                calendar_id=calendar_id_for_event,
+                event_id=google_event_id
+            )
+
+            if delete_successful:
+                logger.info(f"Successfully processed deletion for page {page_id}.")
+            else:
+                logger.warning(f"Failed or unable to delete Google Calendar event for deleted page {page_id}.")
+        else:
+            logger.error("Could not authenticate Google Calendar service to delete event.")
+    else:
+        logger.info(f"No Google Event ID found or category missing for deleted page {page_id}. No Google Calendar event to delete.")
 
 
 def fetch_and_log_page_properties(page_id):
@@ -149,12 +246,13 @@ def fetch_and_log_page_properties(page_id):
         name = extract_title(properties, 'Name')
         category = extract_select(properties, 'Category')
         due = extract_date(properties, 'Due')
+        google_event_id = extract_Google_id(properties, 'Google Event id')
 
         logger.info(f"Page [{page_id}] Summary:")
         logger.info(f"  Name: {name}")
         logger.info(f"  Category: {category}")
         logger.info(f"  Due: {due}")
-        return name, category, due
+        return name, category, due, google_event_id
     else:
         logger.error(f"Failed to fetch page properties for {page_id}. Status: {response.status_code}, Body: {response.text}")
         return None, None, None
@@ -163,6 +261,9 @@ def extract_title(properties, field_name):
     title_data = properties.get(field_name, {}).get("title", [])
     return "".join(part.get("plain_text", "") for part in title_data)
 
+def extract_Google_id(properties, field_name):
+    rich_text_data = properties.get(field_name, {}).get("rich_text", [])
+    return "".join(part.get("plain_text", "") for part in rich_text_data)
 
 def extract_select(properties, field_name):
     # 先取得 category 屬性的資料，如果不存在則為空字典

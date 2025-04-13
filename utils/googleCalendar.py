@@ -108,7 +108,7 @@ def find_free_slots_multi_calendar(service, target_date_str, calendar_ids, block
         # 按開始時間排序所有忙碌/屏蔽時段
         all_busy_intervals.sort(key=lambda x: x['start'])
 
-        # --- 合併重疊或相鄰的忙碌/屏蔽時段 (邏輯同前) ---
+        # --- 合併重疊或相鄰的忙碌/屏蔽時段 ---
         merged_busy_intervals = []
         current_merged_start = all_busy_intervals[0]['start']
         current_merged_end = all_busy_intervals[0]['end']
@@ -120,7 +120,7 @@ def find_free_slots_multi_calendar(service, target_date_str, calendar_ids, block
         merged_busy_intervals.append({'start': current_merged_start, 'end': current_merged_end})
         print(f"合併後的總忙碌/屏蔽時段: {len(merged_busy_intervals)} 個")
 
-        # --- 計算空閒時段 (邏輯同前) ---
+        # --- 計算空閒時段 ---
         free_slots = []
         current_time = time_min
         for busy in merged_busy_intervals:
