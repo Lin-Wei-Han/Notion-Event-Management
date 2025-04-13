@@ -1,26 +1,26 @@
 [
-    {
-        "start_time": "12:00:00",
-        "end_time": "13:00:00",
-        "routine": "daily",
-        "description": "午休時間"
-    },
-    {
-        "start_time": "00:00:00",
-        "end_time": "08:00:00",
-        "routine": "daily",
-        "description": "睡眠/勿擾"
-    },
-    {
-        "start_time": "17:00:00",
-        "end_time": "19:00:00",
-        "routine": "weekday",
-        "description": "下班通勤/休息"
-    },
-    {
-        "start_time": "08:00:00",
-        "end_time": "10:00:00",
-        "routine": "weekly_tue",
-        "description": "固定週二上午會議"
-    }
+  {
+    "start_time": "12:00:00",
+    "end_time": "13:00:00",
+    "routine": "daily",
+    "description": "午休時間"
+  },
+  {
+    "start_time": "00:00:00",
+    "end_time": "08:00:00",
+    "routine": "daily",
+    "description": "睡眠/勿擾"
+  },
+  {
+    "start_time": "17:00:00",
+    "end_time": "19:00:00",
+    "routine": "daily",
+    "description": "晚餐/散步"
+  },
+  {
+    "start_time": "08:00:00",
+    "end_time": "10:00:00",
+    "routine": "weekly_tue",
+    "description": ""
+  }
 ]
