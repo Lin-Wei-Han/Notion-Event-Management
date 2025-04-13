@@ -84,6 +84,8 @@ def handle_insert_event(name, category, due, page_id):
 
     if name and calendar_service:
         calendar_ids_to_query_list = list(known_calendars.values())
+        blocked_time_rules = load_json_data(TIME_JSON_FILE)
+        
         free_slots_result = find_free_slots_multi_calendar(
             calendar_service, due, calendar_ids_to_query_list, blocked_time_rules,
             start_hour=8, end_hour=24, min_duration_hours=2
