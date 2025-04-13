@@ -29,7 +29,7 @@ YOUR_EMAIL = 'xcswap.john@gmail.com' # 您的真人 Email，用於分享新日�
 def authenticate_google_calendar_service_account():
     """使用服務帳戶金鑰進行認證並建立 service 物件"""
     try:
-        creds = service_account.Credentials.from_service_account_file(
+        creds = service_account.Credentials.from_service_account_info(
             SERVICE_ACCOUNT_FILE, scopes=SCOPES)
         service = build('calendar', 'v3', credentials=creds)
         print("Google Calendar API 服務 (服務帳戶) 建立成功")
