@@ -152,9 +152,15 @@ def notion_webhook():
 
     event_type = event.get('type')
     event_data = event.get('data', {})
+
     entity = event.get('entity', {})
-    updated_properties = set(event_data.get('updated_properties', []))
     page_id = entity.get('id')
+    
+    raw_updates = event_data.get('updated_properties', [])
+    if isinstance(raw_updates, list) and all(isinstance(item, str) for item in raw_updates):
+        updated_properties = set(raw_updates)
+    else:
+        updated_properties = set()
 
     if event_type == 'page.created':
         handle_page_created(page_id)

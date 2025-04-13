@@ -29,8 +29,57 @@ NOTION_HEADERS = {
 known_calendars = load_json_data(CALENDARS_JSON_FILE)
 blocked_time_rules = load_json_data(TIME_JSON_FILE)
 
+def update_notion_id_property(page_id: str, value: str) -> bool:
+    """
+    更新指定 Notion 頁面的特定文字屬性 (Rich Text)。
 
-def handle_page_created(page_id):
+    Args:
+        page_id (str): 要更新的 Notion 頁面 ID。
+        property_name (str): 要更新的屬性名稱 (需與 Notion 中的名稱完全一致)。
+        value (str): 要寫入屬性的文字內容。
+        api_base (str): Notion API 的基礎 URL (例如 "https://api.notion.com/v1")。
+        headers (dict): 包含驗證資訊等的請求標頭。
+
+    Returns:
+        bool: 如果更新成功則返回 True，否則返回 False。
+    """
+    update_url = f"{NOTION_API_BASE}/pages/{page_id}"
+
+    # 為 Text (Rich Text) 屬性建構 payload
+    payload = {
+        "properties": {
+            "Google Event id": {
+                "rich_text": [
+                    {
+                        "type": "text",
+                        "text": {
+                            "content": value
+                        }
+                    }
+                ]
+            }
+        }
+    }
+
+    try:
+        response = requests.patch(update_url, headers=NOTION_HEADERS, json=payload)
+
+        if response.status_code == 200:
+            logger.info(f"Successfully updated Notion page {page_id} property 'Google Event id'.")
+            return True
+        else:
+            logger.error(f"Failed to update Notion page {page_id} property 'Google Event id'. Status: {response.status_code}, Response: {response.text}")
+            return False
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error updating Notion page {page_id}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error updating Notion page {page_id}: {e}")
+        return False
+
+
+def handle_page_created(page_id: str):
     logger.info(f'Page created: {page_id}')
     name, category, due = fetch_and_log_page_properties(page_id)
 
@@ -55,12 +104,23 @@ def handle_page_created(page_id):
         event_end_dt = event_start_dt + datetime.timedelta(hours=2) # 建立 2 小時事件
         event_end_str = event_end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        create_event(calendar_service,
-                    calendar_id_to_write=calendar_id, # 使用查找到的 ID
-                    summary=name,
-                    start_datetime_str=first_slot_start,
-                    end_datetime_str=event_end_str,
-                    description='透過 Python Service Account API 自動建立的事件')
+        new_event_object = create_event(calendar_service,
+                        calendar_id_to_write=calendar_id, # 使用查找到的 ID
+                        summary=name,
+                        start_datetime_str=first_slot_start,
+                        end_datetime_str=event_end_str,
+                        description='透過 Python Service Account API 自動建立的事件')
+        if new_event_object:
+            event_id = new_event_object.get('id')
+            print(f"{name}: 成功建立事件，事件 ID 為: {event_id}")
+
+            update_successful = update_notion_id_property(page_id=page_id, value=event_id)
+            if update_successful:
+                print(f"{name}: 已成功將 Event ID 更新回 Notion 頁面 {page_id}")
+            else:
+                print(f"{name}: 更新 Event ID 回 Notion 頁面 {page_id} 失敗。")
+        else:
+            print(f"{name}: 建立事件失敗。")
 
 
 
@@ -81,6 +141,9 @@ def fetch_and_log_page_properties(page_id):
     if response.status_code == 200:
         page = response.json()
         properties = page.get('properties', {})
+
+        for name, prop in properties.items():
+            logger.info(f"- {name}: {prop}")
         
         # 拆出去的欄位處理函式
         name = extract_title(properties, 'Name')

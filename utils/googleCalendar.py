@@ -166,6 +166,7 @@ def create_event(service, calendar_id_to_write, summary, start_datetime_str, end
 
         print(f"正在日曆 '{calendar_id_to_write}' 上建立事件 '{summary}'...")
         created_event = service.events().insert(calendarId=calendar_id_to_write, body=event).execute()
+
         print(f"事件已建立: {created_event.get('summary')} ({created_event.get('htmlLink')})")
         return created_event
 
