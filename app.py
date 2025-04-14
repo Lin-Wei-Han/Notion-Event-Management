@@ -147,8 +147,10 @@ def notion_webhook():
 
     logger.info(event)
 
-    # 一般事件處理
-    WATCHED_PROPERTIES = {'title', 'GSFO', 'yLT%3A'}
+    # 一般事件處理 
+    # title, Category, Due
+    WATCHED_UPDATE_PROPERTIES = {'title', 'GSFO'} 
+    WATCHED_RECREATE_PROPERTIES = {'yLT%3A'}
 
     event_type = event.get('type')
     event_data = event.get('data', {})
@@ -165,9 +167,12 @@ def notion_webhook():
     if event_type == 'page.created':
         handle_page_created(page_id)
     elif event_type == 'page.properties_updated':
-        if WATCHED_PROPERTIES & updated_properties:
+        if WATCHED_UPDATE_PROPERTIES & updated_properties:
             # 有交集才觸發處理
-            handle_page_updated(page_id)
+            handle_page_update(page_id)
+        elif WATCHED_RECREATE_PROPERTIES & updated_properties:
+            # 有交集才觸發處理
+            handle_page_recreate(page_id)
         else:
             logger.info(f'Skipped update for page {page_id} — irrelevant property change: {updated_properties}')
     elif event_type == 'page.deleted':

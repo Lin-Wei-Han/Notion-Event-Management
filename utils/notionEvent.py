@@ -90,12 +90,13 @@ def handle_insert_event(name, category, due, page_id):
             calendar_service, due, calendar_ids_to_query_list, blocked_time_rules,
             start_hour=8, end_hour=24, min_duration_hours=2
         )
-        first_slot_start = free_slots_result[0]['start']
 
         # 如果有空閒則插入，沒有則強制插入早上八點
-        if free_slots_result:
+        if free_slots_result and free_slots_result[0]['start']:
+            first_slot_start = free_slots_result[0]['start']
             event_start_dt = datetime.datetime.strptime(first_slot_start, "%Y-%m-%d %H:%M:%S")
         else:
+            first_slot_start = f'{due} 08:00:00'
             event_start_dt = datetime.datetime.strptime(f'{due} 08:00:00', "%Y-%m-%d %H:%M:%S")
 
         calendar_id = get_or_create_calendar_id(calendar_service, category, known_calendars)
@@ -168,6 +169,64 @@ def delete_google_calendar_event(service, calendar_id: str, event_id: str) -> bo
         print(f"刪除日曆 '{calendar_id}' 的事件 '{event_id}' 時發生未預期錯誤: {e}")
         return False
 
+def update_google_calendar_event(name, category, google_event_id, google_calender_id, page_id) -> bool:
+    calendar_service = authenticate_google_calendar_service_account()
+
+    if google_event_id and google_calender_id and calendar_service:
+        try:
+            # 根據 google_event_id 和 google_calender_id 抓取事件的詳細信息
+            event = calendar_service.events().get(
+                calendarId=google_calender_id,
+                eventId=google_event_id
+            ).execute()
+
+            # 抓取事件的日期、開始和結束時間
+            event_start = event['start'].get('dateTime', event['start'].get('date'))
+            event_end = event['end'].get('dateTime', event['end'].get('date'))
+
+            # 根據 category 創建或獲取日曆 ID
+            calendar_id = get_or_create_calendar_id(calendar_service, category, known_calendars)
+
+            # 創建新的事件
+            new_event = {
+                'summary': name,
+                'location': event.get('location', ''),
+                'description': event.get('description', ''),
+                'start': {'dateTime': event_start},
+                'end': {'dateTime': event_end},
+                'attendees': event.get('attendees', []),
+                'reminders': event.get('reminders', {})
+            }
+
+            # 實際創建事件
+            created_event = calendar_service.events().insert(
+                calendarId=calendar_id,
+                body=new_event
+            ).execute()
+
+            # 更新 Notion 頁面的 Google 事件 ID
+            update_event_successful = update_notion_id_property(page_id=page_id, value=created_event['id'], property_name="Google Event id")
+            update_calendar_successful = update_notion_id_property(page_id=page_id, value=calendar_id, property_name="Google Calendar id")
+            if update_event_successful and update_calendar_successful:
+                print(f"{name}: 成功更新 Google 事件 ID 回 Notion 頁面 {page_id}")
+            else:
+                print(f"{name}: 更新 Google 事件 ID 回 Notion 頁面 {page_id} 失敗。")
+            return True
+
+        except HttpError as error:
+            logger.error(f"Failed to update Google Calendar event '{google_event_id}' in calendar '{google_calender_id}'. An API error occurred: {error}")
+            print(f"更新 Google 日曆 '{google_calender_id}' 的事件 '{google_event_id}' 失敗。API 錯誤: {error}")
+            return False
+
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while updating Google Calendar event '{google_event_id}' in calendar '{google_calender_id}': {e}")
+            print(f"更新 Google 日曆 '{google_calender_id}' 的事件 '{google_event_id}' 時發生未預期錯誤: {e}")
+            return False
+    else:
+        logger.error("Missing required arguments (google_event_id, google_calender_id, calendar_service).")
+        print("缺少必要的參數 (google_event_id, google_calender_id, calendar_service)。")
+        return False
+
 def handle_page_created(page_id: str):
     logger.info(f'Page created: {page_id}')
     name, category, due, google_event_id, google_calender_id = fetch_and_log_page_properties(page_id)
@@ -175,9 +234,33 @@ def handle_page_created(page_id: str):
     handle_insert_event(name, category, due, page_id)
 
 
-
-def handle_page_updated(page_id):
+def handle_page_update(page_id):
     logger.info(f'Page updated: {page_id}')
+    name, category, due, google_event_id, google_calender_id = fetch_and_log_page_properties(page_id)
+
+    if google_event_id and google_calender_id:
+        calendar_service = authenticate_google_calendar_service_account()
+
+        if calendar_service:
+            delete_successful = delete_google_calendar_event(
+                service=calendar_service,
+                calendar_id=google_calender_id,
+                event_id=google_event_id
+            )
+
+            if delete_successful:
+                logger.info(f"Successfully processed deletion for page {page_id}.")
+                update_google_calendar_event(name, category, google_event_id, google_calender_id, page_id)
+            else:
+                logger.warning(f"Failed or unable to delete Google Calendar event for deleted page {page_id}.")
+        else:
+            logger.error("Could not authenticate Google Calendar service to delete event.")
+    else:
+        logger.info(f"No Google Event ID found or category missing for deleted page {page_id}. No Google Calendar event to delete.")
+
+
+def handle_page_recreate(page_id):
+    logger.info(f'Page updated (recreate): {page_id}')
     name, category, due, google_event_id, google_calender_id = fetch_and_log_page_properties(page_id)
 
     if google_event_id and google_calender_id:
